@@ -1,0 +1,444 @@
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MUSIC
+OBJECT MODULE PLACED IN music.OBJ
+COMPILER INVOKED BY: D:\KeilC51\C51\BIN\C51.EXE music.c BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          //#include <REG52.H>       
+   2          
+   3          ////单片机 AT89C52，晶振 11.0592 MHz
+   4          
+   5          //// 定义蜂鸣器端口
+   6          //sbit GPIO_Beep = P3^0; 
+   7          
+   8          //// 节拍计数器（中断会修改，因此必须 volatile）
+   9          //volatile unsigned char g_beat = 0;   
+  10          
+  11          //volatile unsigned char g_songSelect = 0;  // 0 表示歌曲1，1 表示歌曲2
+  12          
+  13          ////------------------------------------------------------
+  14          //// 音符表：格式为 [tone, beat] 成对存储
+  15          //// 特殊符号：0xFF = 休止符；0x00 = 乐曲结束
+  16          
+  17          //unsigned char code music_tab[] = {   
+  18          //    0x18, 0x30, 0x1C, 0x10,   
+  19          //    0x20, 0x40, 0x1C, 0x10,   
+  20          //    0x18, 0x10, 0x20, 0x10,   
+  21          //    0x1C, 0x10, 0x18, 0x40,   
+  22          //    0x1C, 0x20, 0x20, 0x20,   
+  23          //    0x1C, 0x20, 0x18, 0x20,   
+  24          //    0x20, 0x80, 0xFF, 0x20,   
+  25          //    0x30, 0x1C, 0x10, 0x18,   
+  26          //    0x20, 0x15, 0x20, 0x1C,   
+  27          //    0x20, 0x20, 0x20, 0x26,   
+  28          //    0x40, 0x20, 0x20, 0x2B,   
+  29          //    0x20, 0x26, 0x20, 0x20,   
+  30          //    0x20, 0x30, 0x80, 0xFF,   
+  31          //    0x20, 0x20, 0x1C, 0x10,   
+  32          //    0x18, 0x10, 0x20, 0x20,   
+  33          //    0x26, 0x20, 0x2B, 0x20,   
+  34          //    0x30, 0x20, 0x2B, 0x40,   
+  35          //    0x20, 0x20, 0x1C, 0x10,   
+  36          //    0x18, 0x10, 0x20, 0x20,   
+  37          //    0x26, 0x20, 0x2B, 0x20,   
+  38          //    0x30, 0x20, 0x2B, 0x40,   
+  39          //    0x20, 0x30, 0x1C, 0x10,   
+  40          //    0x18, 0x20, 0x15, 0x20,   
+  41          //    0x1C, 0x20, 0x20, 0x20,   
+  42          //    0x26, 0x40, 0x20, 0x20,   
+  43          //    0x2B, 0x20, 0x26, 0x20,   
+  44          //    0x20, 0x20, 0x30, 0x80,   
+  45          //    0x20, 0x30, 0x1C, 0x10,   
+  46          //    0x20, 0x10, 0x1C, 0x10,   
+  47          //    0x20, 0x20, 0x26, 0x20,   
+  48          //    0x2B, 0x20, 0x30, 0x20,   
+  49          //    0x2B, 0x40, 0x20, 0x15,   
+  50          //    0x1F, 0x05, 0x20, 0x10,   
+  51          //    0x1C, 0x10, 0x20, 0x20,   
+  52          //    0x26, 0x20, 0x2B, 0x20,   
+  53          //    0x30, 0x20, 0x2B, 0x40,   
+  54          //    0x20, 0x30, 0x1C, 0x10,   
+  55          //    0x18, 0x20, 0x15, 0x20,   
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 2   
+
+  56          //    0x1C, 0x20, 0x20, 0x20,   
+  57          //    0x26, 0x40, 0x20, 0x20,   
+  58          //    0x2B, 0x20, 0x26, 0x20,   
+  59          //    0x20, 0x20, 0x30, 0x30,   
+  60          //    0x20, 0x30, 0x1C, 0x10,   
+  61          //    0x18, 0x40, 0x1C, 0x20,   
+  62          //    0x20, 0x20, 0x26, 0x40,   
+  63          //    0x13, 0x60, 0x18, 0x20,   
+  64          //    0x15, 0x40, 0x13, 0x40,   
+  65          //    0x18, 0x80, 0x00           // 0x00 表示结束
+  66          //};   
+  67          //// --- 歌曲 2: 小星星 ---
+  68          ////unsigned char code music2_tab[] = {
+  69          ////    0x18, 0x10, 0x18, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0E, 0x10, 0x0E, 0x10, 0x10, 0x20,
+  70          ////    0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x10, 0x16, 0x10, 0x18, 0x20,
+  71          ////    0x10, 0x10, 0x10, 0x10, 0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x20,
+  72          ////    0x10, 0x10, 0x10, 0x10, 0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x20,
+  73          ////    0x18, 0x10, 0x18, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0E, 0x10, 0x0E, 0x10, 0x10, 0x20,
+  74          ////    0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x10, 0x16, 0x10, 0x18, 0x20,
+  75          ////    0x00 // 歌曲结束标志
+  76          ////};
+  77          
+  78          //unsigned char code music2_tab[] = {
+  79          //    // 5 3 5, 5 3 5
+  80          //    0x10, 0x08, 0x14, 0x08, 0x10, 0x10, 0x10, 0x08, 0x14, 0x08, 0x10, 0x10, 
+  81          //    // 5 6 5 4 | 3 1 -
+  82          //    0x10, 0x08, 0x0E, 0x08, 0x10, 0x08, 0x12, 0x08, 0x14, 0x10, 0x18, 0x20, 
+  83          //    // 5 3 5, 5 3 5
+  84          //    0x10, 0x08, 0x14, 0x08, 0x10, 0x10, 0x10, 0x08, 0x14, 0x08, 0x10, 0x10, 
+  85          //    // 5 6 5 4 | 3 2 -
+  86          //    0x10, 0x08, 0x0E, 0x08, 0x10, 0x08, 0x12, 0x08, 0x14, 0x10, 0x16, 0x20,
+  87          //    0xFF, 0x10,
+  88          //    0x00 
+  89          //};
+  90          
+  91          //// Timer0 中断函数：每隔约 10.85ms 触发一次
+  92          //// 功能：递减节拍计数 g_beat
+  93          
+  94          //void Timer0_ISR() interrupt 1   
+  95          //{
+  96          //    TH0 = 0xD8;   // 重装初值高字节
+  97          //    TL0 = 0xEF;   // 重装初值低字节
+  98          //    g_beat--;     // 节拍计数减一
+  99          //}
+ 100          
+ 101          
+ 102          //void ExtInt1_ISR() interrupt 2
+ 103          //{
+ 104          //    g_songSelect ^= 1;   // 在 0 和 1 之间切换
+ 105          //}
+ 106          
+ 107          
+ 108          //// 音符频率延时：控制方波的半周期长度
+ 109          //// tone 越大 -> 延时越长 -> 频率越低
+ 110          
+ 111          //void AudioFrequencyDelay (unsigned char m)    
+ 112          //{   
+ 113          //    unsigned int i = 3 * m;   
+ 114          //    while(--i);   // 空循环延时
+ 115          //} 
+ 116          
+ 117          
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 3   
+
+ 118          //// 发一个音符：tone=音高，beat=节拍长度
+ 119          
+ 120          //void BeepTone(unsigned char tone, unsigned char beat)   
+ 121          //{
+ 122          //    g_beat = beat;   // 设置节拍数
+ 123          //    TR0 = 1;         // 打开 Timer0
+ 124          //    while(g_beat != 0)   // 节拍未耗尽则继续输出方波
+ 125          //    {
+ 126          //        GPIO_Beep = !GPIO_Beep;   // 翻转蜂鸣器输出
+ 127          //        AudioFrequencyDelay(tone);
+ 128          //    }
+ 129          //    TR0 = 0;         // 关闭 Timer0
+ 130          //}
+ 131          
+ 132          
+ 133          //void Delay10ms(unsigned int c)   
+ 134          //{
+ 135          //    unsigned char a, b;
+ 136          //    for (; c > 0; c--)
+ 137          //    {
+ 138          //        for (b = 38; b > 0; b--)
+ 139          //        {
+ 140          //            for (a = 130; a > 0; a--);
+ 141          //        }
+ 142          //    }       
+ 143          //}
+ 144          
+ 145          //// Timer0 初始化：16位模式，每次溢出约 10.85ms
+ 146          //void InitTimer0()
+ 147          //{
+ 148          //    TMOD = 0x01;      // 选择 Timer0 16位模式
+ 149          //    TH0 = 0xD8;       // 初值高字节
+ 150          //    TL0 = 0xEF;       // 初值低字节
+ 151          //    IE  = 0x82;       // EA=1, ET0=1，允许 Timer0 中断
+ 152          //}
+ 153          ////外部中断
+ 154          //void InitExtInt1()
+ 155          //{
+ 156          //    IT1 = 1;   // 下降沿触发
+ 157          //    EX1 = 1;   // 允许外部中断0
+ 158          //    EA  = 1;   // 总中断允许
+ 159          //    IP = 0x01;   // PX0=1，其余=0
+ 160          
+ 161          //}
+ 162          //void PlaySong(unsigned char code *song)
+ 163          //{
+ 164          //    unsigned char i = 0;
+ 165          //    unsigned char tmpTone = 0;
+ 166          
+ 167          //    while(1)
+ 168          //    {
+ 169          //        // 播放过程中检测切歌
+ 170          //        if((g_songSelect == 0 && song != music_tab) ||
+ 171          //           (g_songSelect == 1 && song != music2_tab))
+ 172          //        {
+ 173          //            return;  // 立即退出，去播放另一首
+ 174          //        }
+ 175          
+ 176          //        tmpTone = song[i]; 
+ 177          //        if(tmpTone == 0x00)      // 结束符
+ 178          //        {
+ 179          //            return; 
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 4   
+
+ 180          //        }       
+ 181          //        else if(tmpTone == 0xFF) // 休止符
+ 182          //        { 
+ 183          //            ++i;                  
+ 184          //            Delay10ms(10);        
+ 185          //            TR0 = 0;              
+ 186          //            continue;
+ 187          //        }      
+ 188          //        else 
+ 189          //        {
+ 190          //            unsigned char tone, beat;
+ 191          //            tone = song[i++];   
+ 192          //            beat = song[i++];   
+ 193          //            BeepTone(tone, beat);    
+ 194          //        }
+ 195          //    }   
+ 196          //}
+ 197          
+ 198          
+ 199          
+ 200          
+ 201          //void main()   
+ 202          //{
+ 203          //    InitExtInt1();   
+ 204          //    InitTimer0();    // 初始化定时器
+ 205          //    while(1)   
+ 206          //    {
+ 207          //      if(g_songSelect == 0)
+ 208          //        {
+ 209          //            PlaySong(music_tab);     
+ 210          //        }
+ 211          //        else
+ 212          //        {
+ 213          //            PlaySong(music2_tab);
+ 214          //        }
+ 215          //        Delay10ms(300);      // 歌曲间隔约 3 秒
+ 216          //    }   
+ 217          //}
+ 218          
+ 219          #include <REG52.H>
+ 220          #include <INTRINS.H>
+ 221          
+ 222          // 本例采用89C52, 晶振为11.0592MHZ
+ 223          sbit GPIO_Beep = P3^0; // 蜂鸣器/扬声器引脚
+ 224          sbit GPIO_Key  = P1^0; // 歌曲切换按键引脚
+ 225          
+ 226          unsigned char g_beat = 0;           // 全局节拍计数变量
+ 227          unsigned char g_song_index = 0;     // 全局歌曲索引，用于在任何地方切换歌曲
+ 228          bit g_key_pressed_flag = 0;     // 按键中断标志，用于通知播放函数退出
+ 229          
+ 230          // --- 歌曲 1: 八月桂花遍地开 (您的原始数据) ---
+ 231          unsigned char code song1_tab[] = {
+ 232              0x18, 0x30, 0x1C , 0x10, 0x20, 0x40, 0x1C , 0x10, 0x18, 0x10, 0x20 , 0x10,
+ 233              0x1C, 0x10, 0x18 , 0x40, 0x1C, 0x20, 0x20 , 0x20, 0x1C, 0x20, 0x18 , 0x20,
+ 234              0x20, 0x80, 0xFF , 0x20, 0x30, 0x1C, 0x10 , 0x18, 0x20, 0x15, 0x20 , 0x1C,
+ 235              0x20, 0x20, 0x20 , 0x26, 0x40, 0x20, 0x20 , 0x2B, 0x20, 0x26, 0x20 , 0x20,
+ 236              0x20, 0x30, 0x80 , 0xFF, 0x20, 0x20, 0x1C , 0x10, 0x18, 0x10, 0x20 , 0x20,
+ 237              0x26, 0x20, 0x2B , 0x20, 0x30, 0x20, 0x2B , 0x40, 0x20, 0x20, 0x1C , 0x10,
+ 238              0x18, 0x10, 0x20 , 0x20, 0x26, 0x20, 0x2B , 0x20, 0x30, 0x20, 0x2B , 0x40,
+ 239              0x20, 0x30, 0x1C , 0x10, 0x18, 0x20, 0x15 , 0x20, 0x1C, 0x20, 0x20 , 0x20,
+ 240              0x26, 0x40, 0x20 , 0x20, 0x2B, 0x20, 0x26 , 0x20, 0x20, 0x20, 0x30 , 0x80,
+ 241              0x20, 0x30, 0x1C , 0x10, 0x20, 0x10, 0x1C , 0x10, 0x20, 0x20, 0x26 , 0x20,
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 5   
+
+ 242              0x2B, 0x20, 0x30 , 0x20, 0x2B, 0x40, 0x20 , 0x15, 0x1F, 0x05, 0x20 , 0x10,
+ 243              0x1C, 0x10, 0x20 , 0x20, 0x26, 0x20, 0x2B , 0x20, 0x30, 0x20, 0x2B , 0x40,
+ 244              0x20, 0x30, 0x1C , 0x10, 0x18, 0x20, 0x15 , 0x20, 0x1C, 0x20, 0x20 , 0x20,
+ 245              0x26, 0x40, 0x20 , 0x20, 0x2B, 0x20, 0x26 , 0x20, 0x20, 0x20, 0x30 , 0x30,
+ 246              0x20, 0x30, 0x1C , 0x10, 0x18, 0x40, 0x1C , 0x20, 0x20, 0x20, 0x26 , 0x40,
+ 247              0x13, 0x60, 0x18 , 0x20, 0x15, 0x40, 0x13 , 0x40, 0x18, 0x80,
+ 248              0x00 // 歌曲结束标志
+ 249          };
+ 250          
+ 251          // --- 歌曲 2: 小星星 ---
+ 252          unsigned char code song2_tab[] = {
+ 253              0x18, 0x10, 0x18, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0E, 0x10, 0x0E, 0x10, 0x10, 0x20,
+ 254              0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x10, 0x16, 0x10, 0x18, 0x20,
+ 255              0x10, 0x10, 0x10, 0x10, 0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x20,
+ 256              0x10, 0x10, 0x10, 0x10, 0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x20,
+ 257              0x18, 0x10, 0x18, 0x10, 0x10, 0x10, 0x10, 0x10, 0x0E, 0x10, 0x0E, 0x10, 0x10, 0x20,
+ 258              0x12, 0x10, 0x12, 0x10, 0x14, 0x10, 0x14, 0x10, 0x16, 0x10, 0x16, 0x10, 0x18, 0x20,
+ 259              0x00 // 歌曲结束标志
+ 260          };
+ 261          
+ 262          // --- 歌曲 3: 两只老虎 ---
+ 263          unsigned char code song3_tab[] = {
+ 264              0x16, 0x10, 0x14, 0x10, 0x12, 0x10, 0x16, 0x10, // 1 2 3 1
+ 265              0x16, 0x10, 0x14, 0x10, 0x12, 0x10, 0x16, 0x10, // 1 2 3 1
+ 266              0x12, 0x10, 0x10, 0x10, 0x0E, 0x20,             // 3 4 5
+ 267              0x12, 0x10, 0x10, 0x10, 0x0E, 0x20,             // 3 4 5
+ 268              0x0E, 0x08, 0x0D, 0x08, 0x0E, 0x08, 0x10, 0x08, 0x12, 0x10, 0x16, 0x10, // 5 6 5 4 3 1
+ 269              0x0E, 0x08, 0x0D, 0x08, 0x0E, 0x08, 0x10, 0x08, 0x12, 0x10, 0x16, 0x10, // 5 6 5 4 3 1
+ 270              0x10, 0x10, 0x20, 0x10, 0x18, 0x20,             // 5 低5 1
+ 271              0x10, 0x10, 0x20, 0x10, 0x18, 0x20,             // 5 低5 1
+ 272              0x00 // 歌曲结束标志
+ 273          };
+ 274          
+ 275          #define SONG_COUNT 3 // 定义歌曲的总数
+ 276          // 创建一个指针数组，用于存放所有歌曲的地址
+ 277          unsigned char code *song_list[SONG_COUNT] = { song1_tab, song2_tab, song3_tab };
+ 278          
+ 279          // 毫秒级延时函数
+ 280          void DelayMs(unsigned int c)
+ 281          {
+ 282   1          unsigned char a, b;
+ 283   1          for (;c>0;c--)
+ 284   1              for (b=19;b>0;b--)
+ 285   1                  for (a=130;a>0;a--);
+ 286   1      }
+ 287          
+ 288          // 定时器0中断服务程序，用于控制节拍
+ 289          void int0() interrupt 1
+ 290          {
+ 291   1          TH0 = 0xd8; // 重新装载10ms定时初值
+ 292   1          TL0 = 0xef;
+ 293   1          g_beat--;
+ 294   1      }
+ 295          
+ 296          // 控制音调(频率)的延时
+ 297          void AudioFrequencyDelay (unsigned char m)
+ 298          {
+ 299   1          unsigned i=3*m;
+ 300   1          while(--i);
+ 301   1      }
+ 302          
+ 303          // [修改点 1] 在最耗时的函数中加入按键检测
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 6   
+
+ 304          // 播放一个音符，如果在播放期间检测到按键，则立刻停止并返回
+ 305          void BeepTone(unsigned char tone, unsigned char beat)
+ 306          {
+ 307   1          g_beat = beat;
+ 308   1          TR0 = 1; // 开启定时器0，开始计算节拍
+ 309   1          while(g_beat != 0 && !g_key_pressed_flag) // 在节拍未结束且未检测到按键时循环
+ 310   1          {
+ 311   2              GPIO_Beep = ~GPIO_Beep;
+ 312   2              AudioFrequencyDelay(tone);
+ 313   2      
+ 314   2              // 在产生音频的循环中检测按键，确保最高响应性
+ 315   2              if (GPIO_Key == 0)
+ 316   2              {
+ 317   3                  DelayMs(20); // 按键消抖
+ 318   3                  if (GPIO_Key == 0) // 确认按键按下
+ 319   3                  {
+ 320   4                      g_key_pressed_flag = 1; // 设置按键标志
+ 321   4                      while(!GPIO_Key); // 等待按键释放
+ 322   4                  }
+ 323   3              }
+ 324   2          }
+ 325   1          TR0 = 0; // 关闭定时器0
+ 326   1      }
+ 327          
+ 328          // [修改点 2] 播放歌曲函数也要能被中断
+ 329          void PlaySong(unsigned char code *music_tab)
+ 330          {
+ 331   1          unsigned int i = 0;
+ 332   1          unsigned char tmpTone = 0;
+ 333   1      
+ 334   1          g_key_pressed_flag = 0; // 开始播放前，清除按键标志
+ 335   1      
+ 336   1          while(!g_key_pressed_flag) // 循环条件：按键未被按下
+ 337   1          {
+ 338   2              // 每次循环开始时都检查按键，确保在音符之间也能快速响应
+ 339   2              if (GPIO_Key == 0)
+ 340   2              {
+ 341   3                  DelayMs(20);
+ 342   3                  if (GPIO_Key == 0)
+ 343   3                  {
+ 344   4                      g_key_pressed_flag = 1;
+ 345   4                      while(!GPIO_Key);
+ 346   4                      continue; // 跳出本次循环，外层while会判断标志并退出
+ 347   4                  }
+ 348   3              }
+ 349   2      
+ 350   2              tmpTone = music_tab[i];
+ 351   2              if(tmpTone == 0x00) // 如果碰到结束符
+ 352   2              {
+ 353   3                  return; // 正常结束播放
+ 354   3              }
+ 355   2              else if(tmpTone == 0xff) // 若碰到休止符
+ 356   2              {
+ 357   3                  i++;
+ 358   3                  TR0 = 0;
+ 359   3                  DelayMs(100); // 休止符延时
+ 360   3                  continue;
+ 361   3              }
+ 362   2              else
+ 363   2              {
+ 364   3                  unsigned char tone, beat;
+ 365   3                  tone = music_tab[i++];
+C51 COMPILER V9.52.0.0   MUSIC                                                             09/29/2025 12:12:18 PAGE 7   
+
+ 366   3                  beat = music_tab[i++];
+ 367   3                  BeepTone(tone, beat); // 调用修改后的BeepTone
+ 368   3              }
+ 369   2          }
+ 370   1      }
+ 371          
+ 372          
+ 373          // 初始化定时器0
+ 374          void InitTimer0()
+ 375          {
+ 376   1          TMOD = 0x01; // 选择16位计数器
+ 377   1          TH0 = 0xd8;  // (65535 - 10000) / 256
+ 378   1          TL0 = 0xef;  // (65535 - 10000) % 256
+ 379   1          IE = 0x82;   // 允许定时器T0中断和总中断
+ 380   1      }
+ 381          
+ 382          // [修改点 3] 主函数逻辑简化
+ 383          void main()
+ 384          {
+ 385   1          InitTimer0();
+ 386   1      
+ 387   1          while(1)
+ 388   1          {
+ 389   2              // 播放当前索引指向的歌曲
+ 390   2              // PlaySong函数现在会在检测到按键时自行退出
+ 391   2              PlaySong(song_list[g_song_index]);
+ 392   2      
+ 393   2              // 从PlaySong退出后，无论是正常结束还是被中断，都检查按键标志
+ 394   2              if (g_key_pressed_flag)
+ 395   2              {
+ 396   3                  // 如果是因按键而中断，则切换到下一首歌
+ 397   3                  g_song_index++;
+ 398   3                  if (g_song_index >= SONG_COUNT)
+ 399   3                  {
+ 400   4                      g_song_index = 0; // 循环播放
+ 401   4                  }
+ 402   3              }
+ 403   2              // 如果是正常播放结束，代码会继续执行到这里。
+ 404   2              // 由于没有按键按下，g_song_index 不会改变，
+ 405   2              // 下一次循环会重新播放同一首歌。
+ 406   2              // 如果你希望正常结束后自动播放下一首，
+ 407   2              // 可以将上面的 if 判断逻辑改为无条件执行 g_song_index++。
+ 408   2          }
+ 409   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    275    ----
+   CONSTANT SIZE    =    341    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

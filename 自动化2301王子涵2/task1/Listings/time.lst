@@ -1,0 +1,70 @@
+C51 COMPILER V9.52.0.0   TIME                                                              11/25/2025 22:07:20 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE TIME
+OBJECT MODULE PLACED IN .\Objects\time.obj
+COMPILER INVOKED BY: D:\KeilC51\C51\BIN\C51.EXE source\source\time.c BROWSE INCDIR(.\source\head file) DEBUG OBJECTEXTEN
+                    -D PRINT(.\Listings\time.lst) TABS(2) OBJECT(.\Objects\time.obj)
+
+line level    source
+
+   1          #include "sysclk.h"
+   2          #include "time.h"
+   3          //11059200Hz
+   4          #define TIMER0_RELOAD_HIGH 0xdc // Reload value for Timer0 high byte
+   5          #define TIMER0_RELOAD_LOW 0x00   // Reload value for Timer0 low byte
+   6          //10ms
+   7          
+   8          uint Time_num = 0;
+   9          
+  10          void Timer0_Init()
+  11          {
+  12   1        TH0 = TIMER0_RELOAD_HIGH;           // 设置高8位
+  13   1        TL0 = TIMER0_RELOAD_LOW;
+  14   1        TMOD = 0x01;                        // 设置为16位模式
+  15   1        ET0 = 1;                            // 使能定时器0
+  16   1        TR0 = 1; //开启定时器0
+  17   1      }
+  18          
+  19          void Timer0_ISR (void) interrupt 1
+  20          {
+  21   1        TH0 = TIMER0_RELOAD_HIGH;           // Reinit Timer0 High register
+  22   1        TL0 = TIMER0_RELOAD_LOW;
+  23   1        Time_num++;
+  24   1        if(Time_num >= 100) 
+  25   1        {
+  26   2          Time_num = 0;
+  27   2          sec++;
+  28   2          if(sec==60)
+  29   2          {
+  30   3            sec=0;
+  31   3            min++;
+  32   3          }
+  33   2          if(min==60)
+  34   2          {
+  35   3            min=0;
+  36   3            hour++;
+  37   3          }
+  38   2          if(hour==24)
+  39   2          {
+  40   3            hour=0;
+  41   3            day++;
+  42   3          }
+  43   2        }
+  44   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    118    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+C51 COMPILER V9.52.0.0   TIME                                                              11/25/2025 22:07:20 PAGE 2   
+
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

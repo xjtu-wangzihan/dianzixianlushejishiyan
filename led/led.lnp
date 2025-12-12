@@ -1,0 +1,4 @@
+"STARTUP.obj",
+"pao.obj" 
+TO "led" 
+RAMSIZE(256) 

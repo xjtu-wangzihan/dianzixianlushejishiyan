@@ -1,0 +1,8 @@
+".\Objects\lcd.obj",
+".\Objects\main.obj",
+".\Objects\dight.obj",
+".\Objects\port.obj",
+".\Objects\sysclk.obj",
+".\Objects\time.obj" 
+TO ".\Objects\lcd" 
+PRINT(".\Listings\lcd.m51") RAMSIZE(256) 

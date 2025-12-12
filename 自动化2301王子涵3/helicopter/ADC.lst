@@ -1,0 +1,89 @@
+C51 COMPILER V9.52.0.0   ADC                                                               12/02/2025 23:25:31 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE ADC
+OBJECT MODULE PLACED IN ADC.obj
+COMPILER INVOKED BY: D:\KeilC51\C51\BIN\C51.EXE source\ADC.c LARGE RTX51 BROWSE DEBUG OBJECTEXTEND PRINT(.\ADC.lst) TABS
+                    -(2) OBJECT(ADC.obj)
+
+line level    source
+
+   1          #include "ADC.h"
+   2          
+   3          unsigned int buf[2];
+   4          unsigned char ch = 0;  // 内部变量使用缩写避免与外部冲突
+   5          
+   6          void Timer3_Init_ADC0(int counts) {
+   7   1          Timer3_Stop;                   // 清除 TMR3CN 中断标志位 2，定时器 3 禁止（重置所有�
+             -��态）
+   8   1          Timer3_Reload_Init = -counts;  // 使用 TMR3RL = -counts 重载定时器 3
+   9   1      //    Timer3_Reload_Init = 0x0000;  // 使用 TMR3RL = -counts 重载定时器 3
+  10   1          Timer3_Count_Start;            // 设置 TMR3 计满溢出，立即装载
+  11   1          Disable_Timer3;                // 清除 EIE2 标志位 0，禁止定时器 3 中断
+  12   1          Timer3_Start;                  // 设定 TMR3CN 中断标志位 2，定时器 3 开启
+  13   1      }
+  14          
+  15          void ADC0_Init(void) {
+  16   1          ADC0_Ctr_Set;    // ADC0 控制设置，定时器 3 溢出启动跟踪，持续三个 SAR 时钟，然
+             -后进行 AD 转换，数据右对齐
+  17   1          REF_Ctr_Set;     // 关闭温度传感器, 设定芯片上的 VREF
+  18   1          ADC0_Channel_1;  // ADC0 使用 AIN1 通道
+  19   1          ADC0_Clk_Set;    // 设置 ADC0 SAR 转换时钟周期为 2.5MHz
+  20   1          ADC0_Gain;       // ADC0 增益设置，设定 ACD0 的增益为 1
+  21   1          Enable_ADC0;     // 设定 EIE2 标志位 1，允许 ADC0 转换结束产生的中断请求
+  22   1      }
+  23          
+  24          void ADC0_Enable(unsigned char flag) {
+  25   1          if (flag) {
+  26   2              ADC0_Start;         // 设定 ADC0CN 允许位，ADC0 中断允许
+  27   2              // Disable_Global;  // 禁止全局中断
+  28   2          } else
+  29   1              ADC0_Stop;          // 清除 ADC0CN 允许位，ADC0 中断禁止
+  30   1      }
+  31          
+  32          void ADC0_ISR(void) interrupt 15 {
+  33   1          ADC0_IntFlag_Clear;      // 清除 ADC0CN 转换结束中断标志位，必须使用软件清零
+  34   1          buf[ch] = ADC_Value(0);  // 读 ADC0 中 AIN 通道的值
+  35   1          ch++;                    // 改变通道
+  36   1          if (ch == 2)
+  37   1              ch = 0;
+  38   1          AMX0SL = ch;             // 设置mux到下个通道
+  39   1          
+  40   1          timer3_value++;
+  41   1      }
+  42          
+  43          unsigned int ADC_Value(unsigned char Flag) {
+  44   1          unsigned int temp, temp0, temp1;
+  45   1          if (Flag)     // ADC1
+  46   1              temp0 = ADC1;
+  47   1          else          // ADC0
+  48   1          {
+  49   2              temp0 = ADC0L;
+  50   2              temp1 = ADC0H;
+  51   2          }
+  52   1          temp = temp1 * 256 + temp0;
+C51 COMPILER V9.52.0.0   ADC                                                               12/02/2025 23:25:31 PAGE 2   
+
+  53   1          return temp;  // 取回ADC转换数据
+  54   1      }
+  55          
+  56          unsigned int ADC_ValueReturn(unsigned char ch) {
+  57   1          if (ch < 2)          // 通道范围有效
+  58   1              return buf[ch];  // 取回通道对应数据
+  59   1          else                      // 通道范围出错
+  60   1              return 0xffff;        // 返回错误信息
+  61   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    228    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      5    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

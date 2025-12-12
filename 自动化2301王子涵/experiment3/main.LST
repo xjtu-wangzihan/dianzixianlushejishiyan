@@ -1,0 +1,626 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\KeilC51\C51\BIN\C51.EXE main.c BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include <reg51.h>
+   2          #include <stddef.h>
+   3          #include <stdio.h>
+   4          #include <string.h>
+   5          #define uint unsigned int
+   6          typedef unsigned char uint8;
+   7          #define uchar unsigned char
+   8          #define LCD1602_PORT P2
+   9          #define LCD1602_FLAG
+  10          #define LED P0
+  11          #define MAX_EXPR_LEN 16
+  12          
+  13          sbit KEY = P3^2;   // 按键，外部中断0
+  14          //LCD引脚
+  15          sbit lcd1602_RS=P3^0;
+  16          sbit lcd1602_RW=P3^1;
+  17          sbit lcd1602_EN=P3^7;
+  18          sbit lcd1602_busy=P2^7;
+  19          uchar idata tmp[15];
+  20          uint8 LED_CODE[] = {0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};//0-9
+  21          
+  22          volatile uint8 mode = 2; // 0计算器 2日历 1设置时间
+  23          volatile bit flag1 = 0; //1代表日历模式切回计算器
+  24          volatile bit flag2 = 0; //1代表计算器变成设置模式
+  25          volatile bit flag3 = 0; //1代表设置模式变成日历
+  26          const uchar code str_mode0[]="Calculator";
+  27          uchar keyval,keystr[12];
+  28          uchar xdata expr[16];       // 用于存储表达式，例如 "12+7"
+  29          uchar expr_len = 0; // 当前输入位置索引
+  30          
+  31          uchar data time_buf[15]; // 存储 "YYYYMMDDHHMMSS" 字符串，+1 终止
+  32          uchar time_buf_pos = 0;
+  33          unsigned int sec=52,min=59,hour=15;
+  34          unsigned int  day=20, month=10;
+  35          unsigned int  year=2025;
+  36          #define TIMER0_RELOAD (65536 - 2000)
+  37          
+  38          sbit BEEP = P3^4;
+  39          
+  40          // 简单延时
+  41          void delay(uint t)
+  42          {
+  43   1          uint i,j;
+  44   1          for(i=0; i<t; i++)
+  45   1              for(j=0; j<200; j++);
+  46   1      }
+  47          
+  48          // 外部中断0服务函数
+  49          void ExtInt0_ISR() interrupt 0
+  50          {
+  51   1          delay(20); // 防抖
+  52   1          if(KEY == 0)
+  53   1          {
+  54   2              mode++;
+  55   2              if(mode > 2)
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 2   
+
+  56   2              {
+  57   3                  mode = 0;
+  58   3                  flag1=1;
+  59   3              }
+  60   2              if(mode==1)
+  61   2              {
+  62   3                flag2=1;
+  63   3              }
+  64   2              if(mode==2)
+  65   2              {flag3=1;}
+  66   2          }
+  67   1          while(KEY == 0);  // 等待松开
+  68   1      }
+  69          
+  70          // 外部中断初始化
+  71          void InitExtInt0()
+  72          {
+  73   1          IT0 = 1;  // 下降沿触发
+  74   1          EX0 = 1;  // 允许外部中断0
+  75   1          EA  = 1;  // 总中断允许
+  76   1      }
+  77          
+  78          void lcd1602_CheckBusy()
+  79          {
+  80   1          do
+  81   1          {
+  82   2              lcd1602_busy=1;
+  83   2              lcd1602_RS=0;
+  84   2              lcd1602_RW=1;
+  85   2              lcd1602_EN=0;
+  86   2              lcd1602_EN=1;
+  87   2          }
+  88   1          while(lcd1602_busy);
+  89   1      }
+  90          
+  91          void lcd1602_WriteCmd(const uchar cmd)
+  92          {
+  93   1          lcd1602_CheckBusy();
+  94   1          lcd1602_RS=0;
+  95   1          lcd1602_RW=0;
+  96   1          lcd1602_EN=1;
+  97   1          LCD1602_PORT=cmd;
+  98   1          lcd1602_EN=0;
+  99   1      }
+ 100          
+ 101          
+ 102          void lcd1602_WriteData(const uchar c)
+ 103          {
+ 104   1          lcd1602_CheckBusy();
+ 105   1          lcd1602_RS=1;
+ 106   1          lcd1602_RW=0;
+ 107   1          lcd1602_EN=1;
+ 108   1          LCD1602_PORT=c;
+ 109   1          lcd1602_EN=0;
+ 110   1      }
+ 111          
+ 112          
+ 113          void lcd1602_Init()
+ 114          {
+ 115   1          lcd1602_WriteCmd(0x38);
+ 116   1          lcd1602_WriteCmd(0x0c); //display enable,flag enable,flash enable,
+ 117   1          lcd1602_WriteCmd(0x06); //flag move to right,screen don't move
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 3   
+
+ 118   1          lcd1602_WriteCmd(0x01); //clear screen
+ 119   1      }
+ 120          
+ 121          void lcd1602_Display(const uchar *ptr,uchar line)
+ 122          {
+ 123   1          uchar data i=0;
+ 124   1          uchar *data q;
+ 125   1      
+ 126   1          q=ptr;
+ 127   1          switch(line)
+ 128   1          {
+ 129   2              case 0:
+ 130   2                  lcd1602_WriteCmd(0x80);
+ 131   2                  while(q!=NULL && (*q!='\0') && i<16)
+ 132   2                  {
+ 133   3                      lcd1602_WriteData(*q);
+ 134   3                      q++;
+ 135   3                      i++;
+ 136   3                  }
+ 137   2                  break;
+ 138   2              case 1:
+ 139   2                  lcd1602_WriteCmd(0xc0);
+ 140   2                  while(q!=NULL && (*q!='\0') && i<16)
+ 141   2                  {
+ 142   3                      lcd1602_WriteData(*q);
+ 143   3                      q++;
+ 144   3                      i++;
+ 145   3                  }
+ 146   2                  break;
+ 147   2          }
+ 148   1      }
+ 149          
+ 150          void lcd1602_ClearLine0(void)
+ 151          {
+ 152   1          uchar i;
+ 153   1          lcd1602_WriteCmd(0x80); // 第0行（第一行）起始地址
+ 154   1          for(i = 0; i < 16; i++)
+ 155   1              lcd1602_WriteData(' '); // 写空格清除字符
+ 156   1          lcd1602_WriteCmd(0x80); // 光标复位到第0行行首
+ 157   1      }
+ 158          
+ 159          void lcd1602_ClearLine1(void)   // 清第二行（index 1）
+ 160          {
+ 161   1          uchar i;
+ 162   1          lcd1602_WriteCmd(0xC0); // 第二行起始地址
+ 163   1          for(i=0; i<16; i++) lcd1602_WriteData(' ');
+ 164   1          lcd1602_WriteCmd(0xC0); // 把光标复位到行首
+ 165   1      }
+ 166          
+ 167          uchar kbscan(void)
+ 168          {
+ 169   1          unsigned char sccode,recode;
+ 170   1          P1=0x0f;
+ 171   1          if ((P1 & 0x0f) != 0x0f)
+ 172   1          {
+ 173   2              delay(20);
+ 174   2              if ((P1&0x0f)!= 0x0f)
+ 175   2              {
+ 176   3                  sccode = 0xef;
+ 177   3                  while((sccode&0x01)!=0)
+ 178   3                  {
+ 179   4                      P1=sccode;
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 4   
+
+ 180   4                      if((P1&0x0f)!=0x0f)
+ 181   4                      {
+ 182   5                          recode=(P1&0x0f)|0xf0;
+ 183   5                          while((P1&0x0f)!=0x0f);
+ 184   5                          return((~sccode)+(~recode));
+ 185   5                      }
+ 186   4                      else
+ 187   4                          sccode=(sccode<<1)|0x01;
+ 188   4                  }
+ 189   3              }
+ 190   2          }
+ 191   1          return 0;
+ 192   1      }
+ 193          
+ 194          uchar getkey(void)
+ 195          {
+ 196   1          uchar key;
+ 197   1          key=kbscan();
+ 198   1          if(key==0)
+ 199   1          {
+ 200   2              keyval=0xff;
+ 201   2              return(0);
+ 202   2          }
+ 203   1          switch(key)
+ 204   1          {
+ 205   2              case 0x11:
+ 206   2                  keyval=48; //0的ASCII码
+ 207   2                  break;
+ 208   2              case 0x12:
+ 209   2                  keyval=49;  //1
+ 210   2                  break;
+ 211   2              case 0x14:
+ 212   2                  keyval=50;   //2
+ 213   2                  break;
+ 214   2              case 0x18:
+ 215   2                  keyval=51;
+ 216   2                  break;
+ 217   2              case 0x21:
+ 218   2                  keyval=52;
+ 219   2                  break;
+ 220   2              case 0x22:
+ 221   2                  keyval=53;
+ 222   2                  break;
+ 223   2              case 0x24:
+ 224   2                  keyval=54;
+ 225   2                  break;
+ 226   2              case 0x28:
+ 227   2                  keyval=55;
+ 228   2                  break;
+ 229   2              case 0x41:
+ 230   2                  keyval=56;
+ 231   2                  break;
+ 232   2              case 0x42:
+ 233   2                  keyval=57;
+ 234   2                  break;
+ 235   2              case 0x44:
+ 236   2                  keyval=43;// +
+ 237   2                  break;
+ 238   2              case 0x48:
+ 239   2                  keyval=45;// -
+ 240   2                  break;
+ 241   2              case 0x81:
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 5   
+
+ 242   2                  keyval=42;//  *
+ 243   2                  break;
+ 244   2              case 0x82:
+ 245   2                  keyval=47;//  /
+ 246   2                  break;
+ 247   2              case 0x84:
+ 248   2                  keyval=61;// =
+ 249   2                  break;
+ 250   2              case 0x88:
+ 251   2                  keyval=35; //"#"清除表达式
+ 252   2                  break;
+ 253   2              default:
+ 254   2                  keyval=0xff;
+ 255   2                  break;
+ 256   2          }
+ 257   1          if(keyval!=0xff)
+ 258   1              return(1);
+ 259   1          else
+ 260   1              return(0);
+ 261   1      }
+ 262          
+ 263          
+ 264          // 基本日期合法性检查（简化：未处理闰年2月天数精确）
+ 265          int validate_date(int y,int m,int d,int hh,int mm,int ss)
+ 266          {
+ 267   1          if(y < 1970 || y > 9999) return 0;
+ 268   1          if(m < 1 || m > 12) return 0;
+ 269   1          if(d < 1) return 0;
+ 270   1          if(hh < 0 || hh > 23) return 0;
+ 271   1          if(mm < 0 || mm > 59) return 0;
+ 272   1          if(ss < 0 || ss > 59) return 0;
+ 273   1          // 简化每月天数判断
+ 274   1          if(m==1||m==3||m==5||m==7||m==8||m==10||m==12)
+ 275   1          {
+ 276   2              if(d>31) return 0;
+ 277   2          }
+ 278   1          else if(m==4||m==6||m==9||m==11)
+ 279   1          {
+ 280   2              if(d>30) return 0;
+ 281   2          }
+ 282   1          else     // 2月
+ 283   1          {
+ 284   2              // 闰年判断
+ 285   2              int leap = ( (y%4==0 && y%100!=0) || (y%400==0) );
+ 286   2              if(leap)
+ 287   2              {
+ 288   3                  if(d>29) return 0;
+ 289   3              }
+ 290   2              else
+ 291   2              {
+ 292   3                  if(d>28) return 0;
+ 293   3              }
+ 294   2          }
+ 295   1          return 1;
+ 296   1      }
+ 297          
+ 298          void enter_time_set_mode()
+ 299          {
+ 300   1          //time_set_mode = 1;
+ 301   1          time_buf_pos = 0;
+ 302   1          memset(time_buf,0,sizeof(time_buf));
+ 303   1          
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 6   
+
+ 304   1          lcd1602_ClearLine0();
+ 305   1          delay(50);
+ 306   1          lcd1602_Display("SET TIME:",0);
+ 307   1          // 初始显示占位 YYYYMMDDHHMMSS -> show underscores
+ 308   1          {
+ 309   2              //char tmp[15];
+ 310   2              uchar i;
+ 311   2              for(i=0; i<14; i++) tmp[i] = '_';
+ 312   2              tmp[14]=0;
+ 313   2              lcd1602_ClearLine1();
+ 314   2              lcd1602_Display(tmp,1);
+ 315   2          }
+ 316   1      }
+ 317          
+ 318          void update_time_set_display()
+ 319          {
+ 320   1          //char tmp[15];
+ 321   1          uchar i;
+ 322   1          for(i=0; i<14; i++)
+ 323   1          {
+ 324   2              if(i < time_buf_pos) 
+ 325   2              tmp[i] = time_buf[i];
+ 326   2              else tmp[i] = '_';
+ 327   2          }
+ 328   1          tmp[14]=0;
+ 329   1          lcd1602_Display(tmp,1);
+ 330   1      }
+ 331          
+ 332          void exit_time_set_mode_save()
+ 333          {
+ 334   1          int y,mo,d,hh,mm,ss;
+ 335   1          // 期望 time_buf 中有 14 位数字 YYYYMMDDHHMMSS
+ 336   1          if(time_buf_pos != 14)
+ 337   1          {
+ 338   2              lcd1602_ClearLine0();
+ 339   2              lcd1602_Display("NEED 14 DIGITS",0);
+ 340   2              lcd1602_ClearLine1();
+ 341   2              delay(1000);
+ 342   2              // 回到设置模式等待补全
+ 343   2              lcd1602_ClearLine0();
+ 344   2              lcd1602_Display("SET TIME:",0);
+ 345   2              update_time_set_display();
+ 346   2              return;
+ 347   2          }
+ 348   1          // 解析
+ 349   1          y = (time_buf[0]-'0')*1000 + (time_buf[1]-'0')*100 + (time_buf[2]-'0')*10 + (time_buf[3]-'0');
+ 350   1          mo = (time_buf[4]-'0')*10 + (time_buf[5]-'0');
+ 351   1          d  = (time_buf[6]-'0')*10 + (time_buf[7]-'0');
+ 352   1          hh = (time_buf[8]-'0')*10 + (time_buf[9]-'0');
+ 353   1          mm = (time_buf[10]-'0')*10 + (time_buf[11]-'0');
+ 354   1          ss = (time_buf[12]-'0')*10 + (time_buf[13]-'0');
+ 355   1      
+ 356   1          if(!validate_date(y,mo,d,hh,mm,ss))
+ 357   1          {
+ 358   2              lcd1602_Display("WRONG TIME",0);
+ 359   2              lcd1602_ClearLine1();
+ 360   2              delay(500);
+ 361   2              // 仍然在设置模式，等待重新输入
+ 362   2              lcd1602_Display("SET TIME:",0);
+ 363   2              update_time_set_display();
+ 364   2              return;
+ 365   2          }
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 7   
+
+ 366   1          year = y;
+ 367   1          month = mo;
+ 368   1          day = d;
+ 369   1          hour = hh;
+ 370   1          min = mm;
+ 371   1          sec = ss;
+ 372   1          mode = 2;
+ 373   1          flag3=1;
+ 374   1          lcd1602_Display("TIME SAVED",0);
+ 375   1          lcd1602_ClearLine1();
+ 376   1          delay(300);
+ 377   1      }
+ 378          
+ 379          int calculate_expression(uchar *exp)
+ 380          {
+ 381   1          int num1 = 0, num2 = 0;
+ 382   1          char op = 0;
+ 383   1          int i = 0;
+ 384   1      
+ 385   1          // 解析第一个数
+ 386   1          while (exp[i] >= '0' && exp[i] <= '9')
+ 387   1          {
+ 388   2              num1 = num1 * 10 + (exp[i] - '0');
+ 389   2              i++;
+ 390   2          }
+ 391   1      
+ 392   1          op = exp[i++]; // 运算符 + - * /
+ 393   1      
+ 394   1          // 解析第二个数
+ 395   1          while (exp[i] >= '0' && exp[i] <= '9')
+ 396   1          {
+ 397   2              num2 = num2 * 10 + (exp[i] - '0');
+ 398   2              i++;
+ 399   2          }
+ 400   1      
+ 401   1          // 执行运算
+ 402   1          switch(op)
+ 403   1          {
+ 404   2              case '+':
+ 405   2                  return num1 + num2;
+ 406   2              case '-':
+ 407   2                  return num1 - num2;
+ 408   2              case '*':
+ 409   2                  return num1 * num2;
+ 410   2              case '/':
+ 411   2                  if (num2 == 0) return 0;  // 除零保护
+ 412   2                  return num1 / num2;
+ 413   2              default:
+ 414   2                  return 0;
+ 415   2          }
+ 416   1      }
+ 417          
+ 418          
+ 419          void Timer0_Init(void)
+ 420          {
+ 421   1          TMOD &= 0xF0;     // 清除低四位（设置定时器0）
+ 422   1          TMOD |= 0x01;     // 模式1：16位定时器
+ 423   1      
+ 424   1          // 装载初值
+ 425   1          TH0 = (TIMER0_RELOAD >> 8) & 0xFF;
+ 426   1          TL0 = (TIMER0_RELOAD & 0xFF);
+ 427   1      
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 8   
+
+ 428   1          ET0 = 1;   // 允许定时器0中断
+ 429   1          EA = 1;    // 允许总中断
+ 430   1          TR0 = 1;   // 启动定时器0
+ 431   1      }
+ 432          
+ 433          void Timer0_ISR(void) interrupt 1
+ 434          {
+ 435   1          static unsigned int count = 0;
+ 436   1      // 重装初值
+ 437   1          TH0 = (TIMER0_RELOAD >> 8) & 0xFF;
+ 438   1          TL0 = (TIMER0_RELOAD & 0xFF);
+ 439   1          count++;
+ 440   1          if(count >= 1000)
+ 441   1          {
+ 442   2              // 假设1ms中断一次
+ 443   2              count = 0;
+ 444   2              sec++;
+ 445   2              if(sec==60)
+ 446   2              {
+ 447   3                  sec=0;
+ 448   3                  min++;
+ 449   3              }
+ 450   2              if(min==60)
+ 451   2              {
+ 452   3                  min=0;
+ 453   3                  hour++;
+ 454   3              }
+ 455   2              if(hour==24)
+ 456   2              {
+ 457   3                  hour=0;
+ 458   3                  day++;
+ 459   3              }
+ 460   2          }
+ 461   1      }
+ 462          
+ 463          void Display_Calendar()
+ 464          {
+ 465   1          uchar data line0[10];
+ 466   1          uchar idata line1[8];
+ 467   1          // 格式化为 "YYYY-MM-DD"
+ 468   1          sprintf(line0, "%04d-%02d-%02d", year, month, day);
+ 469   1          // 格式化为 "HH:MM:SS"
+ 470   1          sprintf(line1, "%02d:%02d:%02d", hour, min, sec);
+ 471   1          
+ 472   1          lcd1602_Display(line0, 0);
+ 473   1          //lcd1602_ClearLine1();
+ 474   1          lcd1602_Display(line1, 1);
+ 475   1      }
+ 476          
+ 477          void main()
+ 478          {
+ 479   1          uchar data buf[4];
+ 480   1          int i = 0;
+ 481   1          uchar num=0;
+ 482   1          InitExtInt0();
+ 483   1          Timer0_Init();
+ 484   1          lcd1602_Init();
+ 485   1      
+ 486   1          memset(expr,0,sizeof(expr));
+ 487   1          expr_len = 0;
+ 488   1          BEEP = 0;       
+ 489   1          P3 |= (1 << 3);
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 9   
+
+ 490   1          while(1)
+ 491   1          {
+ 492   2            if (sec == 0 && min == 0)  
+ 493   2              {
+ 494   3                  BEEP = 1;  
+ 495   3                  delay(1000);  
+ 496   3                  BEEP = 0;  
+ 497   3              }
+ 498   2              if(mode == 0)
+ 499   2              {
+ 500   3                  if(flag1==1)
+ 501   3                  {
+ 502   4                      lcd1602_Display(str_mode0,0);
+ 503   4                      lcd1602_ClearLine1();
+ 504   4                      flag1=0;
+ 505   4                  }
+ 506   3                  if(getkey())
+ 507   3                  {
+ 508   4                      if(keyval==35)
+ 509   4                      {
+ 510   5                          memset(keystr, 0, sizeof(keystr));
+ 511   5                          num=0;
+ 512   5                          lcd1602_ClearLine1();
+ 513   5                      }
+ 514   4                      else
+ 515   4                      {
+ 516   5                          if(keyval>=48&&keyval<=57)
+ 517   5                          {
+ 518   6                              LED = LED_CODE[keyval-48];
+ 519   6                          }
+ 520   5                          keystr[num]=keyval;
+ 521   5                          if(keyval=='=')
+ 522   5                          {
+ 523   6                              num++;
+ 524   6                              sprintf(buf, "%d", calculate_expression(keystr));
+ 525   6                              for(i=num; i<(num+strlen(buf)); i++)
+ 526   6                                  keystr[i]=buf[i-num];
+ 527   6                          }
+ 528   5                          lcd1602_Display(keystr,1);
+ 529   5                          num++;
+ 530   5                          num%=16;
+ 531   5                      }
+ 532   4                  }
+ 533   3              }
+ 534   2              else if(mode==1)
+ 535   2              {
+ 536   3                   if(flag2==1)
+ 537   3                  {
+ 538   4                      enter_time_set_mode();
+ 539   4                      flag2=0;
+ 540   4                  }
+ 541   3                      // 在设置模式下，只响应数字键与 '=' 与 '#'
+ 542   3                      if(getkey())
+ 543   3                      {
+ 544   4                          if(keyval==35)  // '#' 用作清除当前已输入（重新开始）
+ 545   4                          {
+ 546   5                              time_buf_pos = 0;
+ 547   5                              memset(time_buf,0,sizeof(time_buf));
+ 548   5                              update_time_set_display();
+ 549   5                          }
+ 550   4                          else if(keyval==61)    // '=' 保存并退出（如果合法）
+ 551   4                          {
+C51 COMPILER V9.52.0.0   MAIN                                                              10/20/2025 18:06:27 PAGE 10  
+
+ 552   5                              exit_time_set_mode_save();
+ 553   5                          }
+ 554   4                          else if(keyval>='0' && keyval<='9')
+ 555   4                          {
+ 556   5                              if(time_buf_pos < 14)
+ 557   5                              {
+ 558   6                                  time_buf[time_buf_pos++] = (uchar)keyval;
+ 559   6                                  update_time_set_display();
+ 560   6                              }
+ 561   5                              else
+ 562   5                              {
+ 563   6                                  // 已满14位，短提示
+ 564   6                                  lcd1602_Display("FULL     ",0);
+ 565   6                                  lcd1602_ClearLine1();
+ 566   6                                  delay(1000);
+ 567   6                                  lcd1602_Display("SET TIME:",0);
+ 568   6                                  update_time_set_display();
+ 569   6                              }
+ 570   5                          }
+ 571   4                          // 忽略其他键
+ 572   4                      }
+ 573   3                  }
+ 574   2                  else 
+ 575   2                  {
+ 576   3                    if(flag3==1)
+ 577   3                    {
+ 578   4                        lcd1602_ClearLine1();
+ 579   4                      flag3=0;}
+ 580   3                      
+ 581   3                      Display_Calendar();
+ 582   3                  }
+ 583   2              }
+ 584   1      
+ 585   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2286    ----
+   CONSTANT SIZE    =    101    ----
+   XDATA SIZE       =     16    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     55      57
+   IDATA SIZE       =     15       8
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

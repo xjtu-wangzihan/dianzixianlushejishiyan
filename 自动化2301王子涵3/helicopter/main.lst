@@ -1,0 +1,422 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.obj
+COMPILER INVOKED BY: D:\KeilC51\C51\BIN\C51.EXE source\main.c LARGE RTX51 BROWSE DEBUG OBJECTEXTEND PRINT(.\main.lst) TA
+                    -BS(2) OBJECT(main.obj)
+
+line level    source
+
+   1          #include "ADC.h"
+   2          #include "DAC.h"
+   3          #include "Delay.h"
+   4          #include "SYS_Init.h"
+   5          #include "Timer.h"
+   6          #include "led.h"
+   7          #include "lcd.h" 
+   8          #include "c8051f020.h"
+   9          #include <math.h>
+  10          #include <stdlib.h>
+  11          #include <stdio.h>
+  12          #include <string.h>
+  13          #include "picture.h"
+  14          #include "queue.h"
+  15          #include "pid.h"
+  16          
+  17          uchar cure_data[2][1024];
+  18          uchar cure_data_flag = 0;
+  19          
+  20          // Timers value
+  21          unsigned int  timer0_value;
+  22          unsigned int  timer1_value;
+  23          unsigned int  timer2_value;
+  24          unsigned int  timer3_value;
+  25          unsigned int  timer4_value;
+  26          
+  27          // ADC & DAC variables
+  28          unsigned char channel;   // ADC 通道转换
+  29          unsigned int  vref;      // VREF
+  30          unsigned int  vtarget;   // VTARGET
+  31          unsigned int  vadc;      // ADC 取值
+  32          unsigned int  vadc_dec;  // ADC 取值
+  33          unsigned int  vdac;      // DAC 输出
+  34          unsigned int  vdac_dec;  // DAC 输出
+  35          unsigned char string[5];    //数字转换为字符串
+  36          
+  37          unsigned int KEY_FLAG;
+  38          
+  39          bit ifstart=0;
+  40          uchar column=0;
+  41          uchar Position=0;
+  42          uint vvalue=0;
+  43          
+  44          uchar code str0[]="wzh 2232112665   ";
+  45          uchar code str1[]="helicopter        ";
+  46          uchar code str2[]="key2 set PID   ";
+  47          uchar code str3[]="key1 start/stop";
+  48          
+  49          //PID展示
+  50          uchar code str10[]="      change Kp";
+  51          uchar code str11[]="Kp---";
+  52          uchar code str12[]="Ki:  ";
+  53          uchar code str13[]="Kd:  ";
+  54          
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 2   
+
+  55          uchar code str20[]="      change Ki";
+  56          uchar code str21[]="Kp:  ";
+  57          uchar code str22[]="Ki---";
+  58          uchar code str23[]="Kd:  ";
+  59          
+  60          uchar code str30[]="      change Kd";
+  61          uchar code str31[]="Kp:  ";
+  62          uchar code str32[]="Ki:  ";
+  63          uchar code str33[]="D---";
+  64          
+  65          PID pid={0,0,0,0,0,0,0,0};
+  66          Queue points;
+  67          
+  68          //显示PID参数
+  69          void PID_display()
+  70          {
+  71   1            WriteStr(0, 0, str0);
+  72   1            WriteStr(1, 0, str1);
+  73   1            WriteStr(2, 0, str2);
+  74   1            WriteStr(3, 0, str3);
+  75   1      }
+  76          
+  77          //根据索引显示PID参数
+  78          void display_pid_parameter(int i)
+  79          {
+  80   1        switch(i)
+  81   1        {
+  82   2          case 0:
+  83   2            // 显示PID参数
+  84   2            WriteStr(0, 0, str10);
+  85   2            WriteStr(1, 0, str11);
+  86   2            WriteStr(2, 0, str12);
+  87   2            WriteStr(3, 0, str13);
+  88   2            sprintf(string,"%.3f",pid.P);
+  89   2            WriteStr(1, 5, string);
+  90   2            sprintf(string,"%.3f",pid.I);
+  91   2            WriteStr(2, 5, string);
+  92   2            sprintf(string,"%.3f",pid.D);
+  93   2            WriteStr(3, 5, string);
+  94   2            break;
+  95   2          case 1:
+  96   2            WriteStr(0, 0, str20);
+  97   2            WriteStr(1, 0, str21);
+  98   2            WriteStr(2, 0, str22);
+  99   2            WriteStr(3, 0, str23);
+ 100   2            sprintf(string,"%.3f",pid.P);
+ 101   2            WriteStr(1, 5, string);
+ 102   2            sprintf(string,"%.3f",pid.I);
+ 103   2            WriteStr(2, 5, string);
+ 104   2            sprintf(string,"%.3f",pid.D);
+ 105   2            WriteStr(3, 5, string);
+ 106   2            break;
+ 107   2          case 2:
+ 108   2            WriteStr(0, 0, str30);
+ 109   2            WriteStr(1, 0, str31);
+ 110   2            WriteStr(2, 0, str32);
+ 111   2            WriteStr(3, 0, str33);
+ 112   2            sprintf(string,"%.3f",pid.P);
+ 113   2            WriteStr(1, 5, string);
+ 114   2            sprintf(string,"%.3f",pid.I);
+ 115   2            WriteStr(2, 5, string);
+ 116   2            sprintf(string,"%.3f",pid.D);
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 3   
+
+ 117   2            WriteStr(3, 5, string);
+ 118   2            break;
+ 119   2        }
+ 120   1      }
+ 121          
+ 122          //定时器 1 初始化
+ 123          void Timer1_Init_Main(void) 
+ 124          {
+ 125   1          Enable_Timer1;       // 设定 IE 标志位 1，允许 Timer1 溢出中断请求
+ 126   1          Timer1_Set_Method1;  // 设置定时器 1 为方式 1 定时器功能
+ 127   1      }
+ 128          
+ 129          //定时器 1 中断服务函数
+ 130          void Timer1_ISR(void) interrupt 3 
+ 131          {
+ 132   1          timer1_value++;
+ 133   1      
+ 134   1          TH1 = 0x00; // 重新初始化Timer0 高位寄存器
+ 135   1          TL1 = 0x00;
+ 136   1      }
+ 137          
+ 138          //设备初始化
+ 139          void Device_Init(void) 
+ 140          {
+ 141   1          SYS_Init();  // SYS 初始化
+ 142   1          LcdInit();   
+ 143   1          LedInit();
+ 144   1          Timer1_Init_Main();
+ 145   1          Timer3_Init_ADC0(SYSCLK / SAMPLERATE);  // TIMER3 初始化 
+ 146   1      
+ 147   1          INT_Init();  // INT 中断初始化
+ 148   1      
+ 149   1          ADC0_Init();     // ADC0 初始化
+ 150   1          ADC0_Enable(1);  // 使能 ADC0
+ 151   1          DAC0_Init();     // DAC 初始化
+ 152   1      
+ 153   1          Timer1_Start;  // 设定 TCON 中断标志位 6，定时器 1 开启
+ 154   1      
+ 155   1          timer1_value = 0;
+ 156   1          timer3_value = 0;
+ 157   1      
+ 158   1          channel  = 1;
+ 159   1          vref     = 5244;
+ 160   1          vtarget  = 2800;
+ 161   1          vadc     = 0x0000;
+ 162   1          vadc_dec = 0;
+ 163   1          vdac     = 0x0000;
+ 164   1          vdac_dec = 0;
+ 165   1      }
+ 166          
+ 167          void Do(void) 
+ 168          {
+ 169   1          if ((timer1_value & 0x0007) == 0x0001) 
+ 170   1          {     
+ 171   2              if (channel == 1)    
+ 172   2              {
+ 173   3                  // 从 ADC0 AIN1 取得 10 位 16 进制数 vadc
+ 174   3                  vadc = ADC_ValueReturn(channel);
+ 175   3                  // 将 vadc 转化为 10 进制数进行计算
+ 176   3                  vadc_dec = (unsigned long int)vadc * (unsigned long int)vref / 4096;
+ 177   3                //调用PID控制函数
+ 178   3                  PID_contrl(&pid,vadc_dec);
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 4   
+
+ 179   3                  vdac_dec=vadc_dec+pid.result;
+ 180   3                  //vdac_dec=pid.result;
+ 181   3                  // 将 10 进制数 vdac_dec 转化为 16 进制数
+ 182   3                  vdac = (unsigned long int)vdac_dec * 4096 / (unsigned long int)vref;
+ 183   3                  // 从 ADC0 输出 10 位 16 进制数 vdac
+ 184   3                  DAC0_Output(vdac);      
+ 185   3                  //调节目标霍尔电压值
+ 186   3                  if(KEY_FLAG==1)
+ 187   3                  {
+ 188   4                    pid.setpoint-=50;
+ 189   4                    KEY_FLAG=0;
+ 190   4                  }
+ 191   3                  else
+ 192   3                  {
+ 193   4                    if(KEY_FLAG==2)
+ 194   4                    {
+ 195   5                      pid.setpoint+=50;
+ 196   5                      KEY_FLAG=0;
+ 197   5                    }
+ 198   4                }
+ 199   3            }
+ 200   2          }
+ 201   1      }
+ 202          
+ 203          void setPID(void)
+ 204          {
+ 205   1        uint k=0;
+ 206   1        while(k!=3)
+ 207   1        {
+ 208   2          //显示PID参数
+ 209   2          display_pid_parameter(k);
+ 210   2          //显示数字
+ 211   2          my_LedDispNum(vadc_dec,pid.setpoint,vdac_dec);
+ 212   2          Delay_ms(30);
+ 213   2      
+ 214   2          if(KEY_FLAG==1)
+ 215   2          {
+ 216   3            switch(k)
+ 217   3            {
+ 218   4              case 0:
+ 219   4                pid.P-=0.1;
+ 220   4              break;
+ 221   4              case 1:
+ 222   4                pid.I-=0.001;
+ 223   4              break;
+ 224   4              case 2:
+ 225   4                pid.D-=0.001;
+ 226   4              break;
+ 227   4            }
+ 228   3            //重置按键标志
+ 229   3            KEY_FLAG=0;
+ 230   3          }
+ 231   2          //按键标志为2  
+ 232   2          if(KEY_FLAG==2)
+ 233   2          {
+ 234   3            switch(k)
+ 235   3            {
+ 236   4              case 0:
+ 237   4                pid.P+=0.1;
+ 238   4              break;
+ 239   4              case 1:
+ 240   4                pid.I+=0.001;
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 5   
+
+ 241   4              break;
+ 242   4              case 2:
+ 243   4                pid.D+=0.001;
+ 244   4              break;
+ 245   4            }
+ 246   3            KEY_FLAG=0;
+ 247   3          }
+ 248   2            Delay_ms(30);
+ 249   2              //按键标志为 3
+ 250   2          if(KEY_FLAG==3)
+ 251   2          {
+ 252   3            Delay_ms(30);
+ 253   3            KEY_FLAG=0;
+ 254   3            k+=1;
+ 255   3          }
+ 256   2        }
+ 257   1        k=0;
+ 258   1      }
+ 259          
+ 260          
+ 261          void draw_buffer(uchar *buffer,Queue *Q)
+ 262          {
+ 263   1        uchar num=Q->number;
+ 264   1        uchar index=Q->front;
+ 265   1        uchar count=0;
+ 266   1        while(num--!=0)
+ 267   1        { 
+ 268   2          buffer[(63-Q->base[index])*16+(count>>3)]|=0x80>>(count&0x07);
+ 269   2          index=(index+1)%129;//实现index逐次往队尾移一位
+ 270   2          ++count;
+ 271   2        }
+ 272   1      }
+ 273          
+ 274          
+ 275          
+ 276          //void draw_buffer(uchar *buffer,Queue *Q)
+ 277          //{
+ 278          //  uchar num=Q->number;
+ 279          //  uchar index=Q->rear;
+ 280          //  uchar count=0;
+ 281          //  //uchar temp;
+ 282          //  while(num--!=0)
+ 283          //  {
+ 284          //    index=(index+129-1)%129;
+ 285          //    buffer[(63-Q->base[index])*16+(count>>3)]|=0x80>>(count&0x07);
+ 286          //    ++count;
+ 287          //  }
+ 288          //}
+ 289          
+ 290          
+ 291          uchar scale(uint vadc_dec)
+ 292          {
+ 293   1        uchar level = 0;
+ 294   1      //  level = (uchar)((vadc_dec-2000)/40);
+ 295   1          level = (uchar)((vadc_dec-2500)/32);
+ 296   1      
+ 297   1        return level;
+ 298   1      }
+ 299          
+ 300          
+ 301          int main(void) 
+ 302          {
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 6   
+
+ 303   1          int i=0,j=0,k=0;
+ 304   1          Device_Init();
+ 305   1          PID_init(&pid);
+ 306   1          KEY_FLAG=0;
+ 307   1          InitQueue(&points); 
+ 308   1          while(1)
+ 309   1          {
+ 310   2            //Delay_ms(10);
+ 311   2            //LcdClear();
+ 312   2            //显示数字
+ 313   2            my_LedDispNum(vadc_dec,pid.setpoint,vdac_dec);
+ 314   2            //显示PID控制信息
+ 315   2            PID_display();
+ 316   2            if(KEY_FLAG==2)
+ 317   2            {     
+ 318   3              //清空LCD显示
+ 319   3              LcdClear();
+ 320   3              ImageShow(blank);
+ 321   3              KEY_FLAG=0;
+ 322   3              //设置PID参数
+ 323   3              setPID();
+ 324   3            }
+ 325   2            
+ 326   2            if(KEY_FLAG==1)
+ 327   2            {
+ 328   3              LcdClear();
+ 329   3              ImageShow(blank);
+ 330   3              KEY_FLAG=0;
+ 331   3              //当按键标志不等于3时
+ 332   3              while(KEY_FLAG!=3)
+ 333   3              { 
+ 334   4                //显示数字
+ 335   4                my_LedDispNum(vadc_dec,pid.setpoint,vdac_dec);
+ 336   4                Do();
+ 337   4                i+=1;
+ 338   4                if(i == 2)  //调
+ 339   4                {
+ 340   5                  //重置
+ 341   5                  i = 0;
+ 342   5                  EnQueue(&points,scale(vadc_dec));
+ 343   5                  
+ 344   5                  //清空缓冲器
+ 345   5                  memset(cure_data[cure_data_flag],0,1024*sizeof(uchar));//刷新缓冲器，全部赋0
+ 346   5                  draw_buffer(cure_data[cure_data_flag],&points);//将队列中的点绘制到缓冲区
+ 347   5                  ScreenShow(cure_data[cure_data_flag],cure_data[!cure_data_flag]);//画点，利用2个缓冲区 
+ 348   5                  cure_data_flag=!cure_data_flag;//缓冲区互换角色
+ 349   5                }
+ 350   4              }
+ 351   3              pid.sumerror = 0;
+ 352   3              pid.lasterror = 0;
+ 353   3        pid.preverror = 0;  
+ 354   3                //设置vdac=0
+ 355   3                vdac=0;
+ 356   3                //输出vdac到DAC0
+ 357   3                DAC0_Output(vdac);
+ 358   3                //重置按键标志
+ 359   3                KEY_FLAG=0;
+ 360   3                //初始化LCD
+ 361   3                LcdInit();
+ 362   3              }
+ 363   2          }
+ 364   1      }
+C51 COMPILER V9.52.0.0   MAIN                                                              12/11/2025 18:18:04 PAGE 7   
+
+ 365          
+ 366          // 中断服务函数
+ 367          void INT1_ISR(void) interrupt 2
+ 368          {
+ 369   1        Delay_ms(20);
+ 370   1        
+ 371   1        //根据P5的值进行判断
+ 372   1        switch(P5)
+ 373   1        {
+ 374   2          case 0xfb://左键
+ 375   2            KEY_FLAG=1;
+ 376   2            break;    
+ 377   2          
+ 378   2          case 0xfd://中键
+ 379   2            KEY_FLAG=2;
+ 380   2            break;
+ 381   2          
+ 382   2          case 0xfe://右键
+ 383   2            KEY_FLAG=3;
+ 384   2            break;
+ 385   2        }
+ 386   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1900    ----
+   CONSTANT SIZE    =   1199    ----
+   XDATA SIZE       =   2239      17
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
